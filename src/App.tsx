@@ -68,6 +68,7 @@ import Tasks from "./pages/supervisor/Tasks";
 import SupervisorEmployees from "./pages/supervisor/SupervisorEmployees";
 import Attendance from "./pages/supervisor/Attendance";
 import SupervisorSettings from "./pages/supervisor/SupervisorSettings";
+import InventoryPage from "./pages/supervisor/InventoryPage"; // ADD THIS IMPORT
 
 // Employee Pages
 import EmployeeTasks from "./pages/employee/EmployeeTasks";
@@ -80,6 +81,8 @@ import NotFound from "./pages/NotFound";
 import ManagerAttendance from "./pages/manager/ManagerAttendance";
 import WorkQuery from "./pages/supervisor/WorkQuery";
 import SuperAdminWorkIssues from "./pages/superadmin/SuperAdminWorkIssues";
+import AdminAttendanceView from "./pages/admin/AdminAttendanceView";
+import ManagerOperations from "./pages/manager/ManagerOperations";
 
 
 const queryClient = new QueryClient();
@@ -137,6 +140,7 @@ const App = () => (
               <Route path="dashboard" element={<AdminDashboard />} />
               <Route path="profile" element={<AdminProfile />} />
               <Route path="team" element={<AdminTeam />} />
+              <Route path="attendance" element={<AdminAttendanceView />} />
               <Route path="tasks" element={<AdminTasks />} />
               <Route path="reports" element={<AdminReports />} />
               <Route path="leave" element={<AdminLeave />} />
@@ -166,6 +170,7 @@ const App = () => (
               <Route path="tasks" element={<ManagerTasks />} />
               <Route path="reports" element={<ManagerReports />} />
               <Route path="leave" element={<ManagerLeave />} />
+               <Route path="operations" element={<ManagerOperations />} />
               <Route path="managerattendance" element={<ManagerAttendance />}/>
               <Route path="notifications" element={<ManagerNotifications />} />
               <Route path="settings" element={<ManagerSettings />} />
@@ -184,6 +189,7 @@ const App = () => (
               <Route path="profile" element={<SupervisorProfile />} />
               <Route path="tasks" element={<Tasks />} />
               <Route path="query" element={<WorkQuery />} />
+              <Route path="inventory" element={<InventoryPage />} /> {/* ADD THIS ROUTE */}
               <Route path="employees" element={<SupervisorEmployees />} />
               <Route path="attendance" element={<Attendance />} />
               <Route path="leave" element={<SupervisorLeave />} />
