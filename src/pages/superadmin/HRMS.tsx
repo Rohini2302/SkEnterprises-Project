@@ -967,6 +967,7 @@ const HRMS = () => {
   const [salaryStructures, setSalaryStructures] = useState<SalaryStructure[]>(initialSalaryStructures);
   const [salarySlips, setSalarySlips] = useState<SalarySlip[]>(initialSalarySlips);
   const [activeTab, setActiveTab] = useState("employees");
+    const [deductions, setDeductions] = useState<Deduction[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(
     new Date().toISOString().slice(0, 7)
   );
@@ -1049,6 +1050,7 @@ const HRMS = () => {
           <TabsContent value="performance">
             <PerformanceTab
               performance={performance}
+               setDeductions={setDeductions} 
               setPerformance={setPerformance}
             />
           </TabsContent>
