@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,32 +7,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Eye, Trash2, Plus, Download, Sheet, User, Edit, Camera, FileText, ArrowUpDown, Calendar, Files } from "lucide-react";
+import { Eye, Trash2, Plus, Download, Sheet, User, Edit, Camera, FileText, ArrowUpDown, Calendar, Files, AlertCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Employee } from "./types";
 import StatCard from "./StatCard";
 import SearchBar from "./SearchBar";
 import Pagination from "./Pagination";
 import ExcelImportDialog from "./ExcelImportDialog";
+import axios from "axios";
 
 interface EmployeesTabProps {
-  employees: Employee[];
-  setEmployees: React.Dispatch<React.SetStateAction<Employee[]>>;
   setActiveTab: (tab: string) => void;
-  newJoinees: Employee[];
-  setNewJoinees: React.Dispatch<React.SetStateAction<Employee[]>>;
-  leftEmployees: Employee[];
-  setLeftEmployees: React.Dispatch<React.SetStateAction<Employee[]>>;
 }
 
+const API_URL = "http://localhost:5001/api";
+
 const EmployeesTab = ({ 
-  employees, 
-  setEmployees, 
-  setActiveTab,
-  newJoinees,
-  setNewJoinees,
-  leftEmployees,
-  setLeftEmployees
+  setActiveTab
 }: EmployeesTabProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -46,6 +37,16 @@ const EmployeesTab = ({
   const [documentsDialogOpen, setDocumentsDialogOpen] = useState(false);
   const [epfForm11DialogOpen, setEpfForm11DialogOpen] = useState(false);
   const [selectedEmployeeForEPF, setSelectedEmployeeForEPF] = useState<Employee | null>(null);
+  
+  // Employees data from API
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [totalEmployees, setTotalEmployees] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<number | null>(null);
+  
   const [epfFormData, setEpfFormData] = useState({
     name: "",
     fatherName: "",
@@ -79,7 +80,7 @@ const EmployeesTab = ({
     epsAmountWithdrawn: "",
     earnedEPSWithdrawn: "",
     declaration: true,
-    employerName: "",
+    employerName: "SK ENTERPRISES",
     joinDate: "",
     pfNumber: "",
     kycStatus: "not_uploaded",
@@ -87,11 +88,93 @@ const EmployeesTab = ({
     physicalClaimFiled: false
   });
 
+  // Fetch employees from API
+  useEffect(() => {
+    fetchEmployees();
+  }, [employeesPage, employeesItemsPerPage, searchTerm, selectedDepartment, selectedSite, selectedJoinDate, sortBy]);
+
+  const fetchEmployees = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const params: any = {
+        page: employeesPage,
+        limit: employeesItemsPerPage,
+      };
+      
+      if (searchTerm) params.search = searchTerm;
+      if (selectedDepartment !== "all") params.department = selectedDepartment;
+      if (selectedSite !== "all") params.siteName = selectedSite;
+      if (selectedJoinDate) params.dateOfJoining = selectedJoinDate;
+      if (sortBy) {
+        params.sortBy = sortBy;
+        params.sortOrder = "asc";
+      }
+      
+      const response = await axios.get(`${API_URL}/employees`, { params });
+      
+      if (response.data.success) {
+        // Transform API data to match Employee interface
+        const transformedEmployees = response.data.data.map((emp: any, index: number) => ({
+          id: emp._id ? parseInt(emp._id.slice(-6), 16) || index + 1 : index + 1,
+          employeeId: emp.employeeId || `EMP${String(index + 1).padStart(4, '0')}`,
+          name: emp.name || "Unknown",
+          email: emp.email || "",
+          phone: emp.phone || "",
+          aadharNumber: emp.aadharNumber || "",
+          panNumber: emp.panNumber || "",
+          esicNumber: emp.esicNumber || "",
+          uan: emp.uanNumber || "",
+          dateOfBirth: emp.dateOfBirth ? new Date(emp.dateOfBirth).toISOString().split('T')[0] : "",
+          joinDate: emp.dateOfJoining ? new Date(emp.dateOfJoining).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          exitDate: emp.dateOfExit ? new Date(emp.dateOfExit).toISOString().split('T')[0] : "",
+          bloodGroup: emp.bloodGroup || "",
+          gender: emp.gender || "",
+          maritalStatus: emp.maritalStatus || "",
+          department: emp.department || "Unknown",
+          position: emp.position || "",
+          siteName: emp.siteName || "",
+          salary: emp.salary || 0,
+          status: emp.status || "active",
+          documents: emp.documents || [],
+          photo: null, // Handle photo separately if available
+          fatherName: emp.fatherName || "",
+          motherName: emp.motherName || "",
+          spouseName: emp.spouseName || "",
+          numberOfChildren: emp.numberOfChildren ? emp.numberOfChildren.toString() : "0",
+          nomineeName: emp.nomineeName || "",
+          nomineeRelation: emp.nomineeRelation || "",
+          accountNumber: emp.accountNumber || "",
+          ifscCode: emp.ifscCode || "",
+          bankName: emp.bankName || "",
+          permanentAddress: emp.permanentAddress || "",
+          localAddress: emp.localAddress || "",
+          emergencyContactName: emp.emergencyContactName || "",
+          emergencyContactPhone: emp.emergencyContactPhone || "",
+          emergencyContactRelation: emp.emergencyContactRelation || "",
+        }));
+        
+        setEmployees(transformedEmployees);
+        setTotalEmployees(response.data.pagination?.total || transformedEmployees.length);
+      } else {
+        setError(response.data.message || "Failed to fetch employees");
+        toast.error("Failed to load employees");
+      }
+    } catch (err: any) {
+      console.error("Error fetching employees:", err);
+      setError(err.message || "Network error occurred");
+      toast.error("Error loading employees");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Get unique departments and sites for filters
   const departments = Array.from(new Set(employees.map(emp => emp.department))).filter(Boolean);
   const sites = Array.from(new Set(employees.map(emp => emp.siteName))).filter(Boolean);
 
-  // Filter employees based on search term and selected filters
+  // Filter employees based on search term and selected filters (client-side as backup)
   const filteredEmployees = employees.filter(emp => {
     const matchesSearch = 
       emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -106,7 +189,7 @@ const EmployeesTab = ({
     return matchesSearch && matchesDepartment && matchesSite && matchesJoinDate;
   });
 
-  // Sort employees based on selected criteria
+  // Sort employees based on selected criteria (client-side)
   const sortedEmployees = [...filteredEmployees].sort((a, b) => {
     if (sortBy === "name") {
       return a.name.localeCompare(b.name);
@@ -133,20 +216,55 @@ const EmployeesTab = ({
   const leftEmployeesCount = employees.filter(emp => emp.status === "left").length;
   const departmentsCount = new Set(employees.map(e => e.department)).size;
 
-  const handleDeleteEmployee = (id: number) => {
-    setEmployees(employees.filter(emp => emp.id !== id));
-    toast.success("Employee deleted successfully!");
+  const handleDeleteEmployee = async (id: number) => {
+    try {
+      setIsDeleting(id);
+      const employee = employees.find(emp => emp.id === id);
+      if (!employee) {
+        toast.error("Employee not found");
+        return;
+      }
+      
+      const response = await axios.delete(`${API_URL}/employees/${employee.employeeId}`);
+      
+      if (response.data.success) {
+        setEmployees(prev => prev.filter(emp => emp.id !== id));
+        toast.success("Employee deleted successfully!");
+      } else {
+        toast.error(response.data.message || "Failed to delete employee");
+      }
+    } catch (err: any) {
+      console.error("Error deleting employee:", err);
+      toast.error(err.response?.data?.message || "Error deleting employee");
+    } finally {
+      setIsDeleting(null);
+    }
   };
 
-  const handleMarkAsLeft = (employee: Employee) => {
-    const updatedEmployees = employees.filter(emp => emp.id !== employee.id);
-    const updatedNewJoinees = newJoinees.filter(emp => emp.id !== employee.id);
-    const leftEmployee = { ...employee, status: "left" as const, exitDate: new Date().toISOString().split('T')[0] };
-    
-    setEmployees(updatedEmployees);
-    setNewJoinees(updatedNewJoinees);
-    setLeftEmployees([...leftEmployees, leftEmployee]);
-    toast.success("Employee marked as left");
+  const handleMarkAsLeft = async (employee: Employee) => {
+    try {
+      setLoading(true);
+      const response = await axios.patch(
+        `${API_URL}/employees/${employee.employeeId}/status`, 
+        { status: "left" }
+      );
+      
+      if (response.data.success) {
+        setEmployees(prev => prev.map(emp => 
+          emp.id === employee.id 
+            ? { ...emp, status: "left", exitDate: new Date().toISOString().split("T")[0] }
+            : emp
+        ));
+        toast.success("Employee marked as left");
+      } else {
+        toast.error(response.data.message || "Failed to update status");
+      }
+    } catch (err: any) {
+      console.error("Error updating employee status:", err);
+      toast.error(err.response?.data?.message || "Error updating status");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -158,32 +276,61 @@ const EmployeesTab = ({
     }
   };
 
-  const exportToExcel = (data: any[], filename: string) => {
-    // Implementation for Excel export
-    toast.success(`${filename} exported successfully!`);
+  const handleExportEmployees = async () => {
+    try {
+      setIsExporting(true);
+      
+      const response = await axios.get(`${API_URL}/employees/export`, {
+        responseType: "blob",
+        params: {
+          department: selectedDepartment !== "all" ? selectedDepartment : undefined,
+          status: "active"
+        }
+      });
+      
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `employees_export_${new Date().toISOString().split("T")[0]}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      toast.success("Employees exported successfully!");
+    } catch (err: any) {
+      console.error("Error exporting employees:", err);
+      toast.error(err.response?.data?.message || "Export failed");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
-  const handleExportEmployees = () => {
-    const exportData = employees.map(emp => ({
-      employeeId: emp.employeeId,
-      name: emp.name,
-      email: emp.email,
-      phone: emp.phone,
-      aadharNumber: emp.aadharNumber,
-      department: emp.department,
-      position: emp.position,
-      joinDate: emp.joinDate,
-      status: emp.status,
-      salary: emp.salary,
-      uan: emp.uan,
-      esicNumber: emp.esicNumber
-    }));
-    exportToExcel(exportData, 'employees_data');
-  };
-
-  const handleImportEmployees = (file: File) => {
-    // Implementation for Excel import
-    toast.success("Employees imported successfully!");
+  const handleImportEmployees = async (file: File) => {
+    try {
+      setIsImporting(true);
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      const response = await axios.post(`${API_URL}/employees/import`, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+      
+      if (response.data.success) {
+        toast.success("Employees imported successfully!");
+        await fetchEmployees(); // Refresh the list
+        setImportDialogOpen(false);
+      } else {
+        toast.error(response.data.message || "Import failed");
+      }
+    } catch (err: any) {
+      console.error("Error importing employees:", err);
+      toast.error(err.response?.data?.message || "Import failed");
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const handleSortChange = (value: string) => {
@@ -195,6 +342,7 @@ const EmployeesTab = ({
     setSelectedSite("all");
     setSelectedJoinDate("");
     setSortBy("");
+    setSearchTerm("");
   };
 
   const handleViewDocuments = (employee: Employee) => {
@@ -248,10 +396,29 @@ const EmployeesTab = ({
     setEpfForm11DialogOpen(true);
   };
 
-  const handleEPFFormSubmit = () => {
-    // Handle form submission
-    toast.success("EPF Form 11 submitted successfully!");
-    setEpfForm11DialogOpen(false);
+  const handleEPFFormSubmit = async () => {
+    try {
+      if (!selectedEmployeeForEPF) return;
+      
+      setLoading(true);
+      const response = await axios.post(`${API_URL}/epf-forms`, {
+        employeeId: selectedEmployeeForEPF.employeeId,
+        formData: epfFormData,
+        status: "submitted"
+      });
+      
+      if (response.data.success) {
+        toast.success("EPF Form 11 submitted successfully!");
+        setEpfForm11DialogOpen(false);
+      } else {
+        toast.error(response.data.message || "Failed to submit form");
+      }
+    } catch (err: any) {
+      console.error("Error submitting EPF form:", err);
+      toast.error(err.response?.data?.message || "Error submitting form");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleEPFFormChange = (field: string, value: string | boolean) => {
@@ -261,15 +428,15 @@ const EmployeesTab = ({
     }));
   };
 
-  // Form generation functions
+  // Form generation functions (unchanged from original)
   const generateIDCard = (employee: Employee) => {
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open("", "_blank");
     if (!printWindow) {
       toast.error("Please allow popups to generate ID card");
       return;
     }
 
-    const photoUrl = employee.photo ? URL.createObjectURL(employee.photo) : '';
+    const photoUrl = employee.photo ? URL.createObjectURL(employee.photo) : "";
     
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -390,7 +557,7 @@ const EmployeesTab = ({
               </div>
               <div class="detail-row">
                 <span class="label">Blood Group:</span>
-                <span class="value">${employee.bloodGroup || 'N/A'}</span>
+                <span class="value">${employee.bloodGroup || "N/A"}</span>
               </div>
               <div class="detail-row">
                 <span class="label">Join Date:</span>
@@ -422,7 +589,7 @@ const EmployeesTab = ({
   };
 
   const downloadNomineeForm = (employee: Employee) => {
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open("", "_blank");
     if (!printWindow) {
       toast.error("Please allow popups to generate forms");
       return;
@@ -462,8 +629,8 @@ const EmployeesTab = ({
 
             <div class="section">
               <div class="section-title">Nominee Details</div>
-              <div class="field"><span class="label">Nominee Name:</span> ${employee.nomineeName || '________________'}</div>
-              <div class="field"><span class="label">Relationship:</span> ${employee.nomineeRelation || '________________'}</div>
+              <div class="field"><span class="label">Nominee Name:</span> ${employee.nomineeName || "________________"}</div>
+              <div class="field"><span class="label">Relationship:</span> ${employee.nomineeRelation || "________________"}</div>
               <div class="field"><span class="label">Date of Birth:</span> ________________</div>
               <div class="field"><span class="label">Address:</span> ________________</div>
               <div class="field"><span class="label">Share Percentage:</span> ________________</div>
@@ -504,7 +671,7 @@ const EmployeesTab = ({
   };
 
   const downloadPFForm = (employee: Employee) => {
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open("", "_blank");
     if (!printWindow) {
       toast.error("Please allow popups to generate forms");
       return;
@@ -555,9 +722,9 @@ const EmployeesTab = ({
 
             <div class="section">
               <div class="section-title">Bank Account Details</div>
-              <div class="field"><span class="label">Bank Name:</span> ${employee.bankName || '________________'}</div>
-              <div class="field"><span class="label">Account Number:</span> ${employee.accountNumber || '________________'}</div>
-              <div class="field"><span class="label">IFSC Code:</span> ${employee.ifscCode || '________________'}</div>
+              <div class="field"><span class="label">Bank Name:</span> ${employee.bankName || "________________"}</div>
+              <div class="field"><span class="label">Account Number:</span> ${employee.accountNumber || "________________"}</div>
+              <div class="field"><span class="label">IFSC Code:</span> ${employee.ifscCode || "________________"}</div>
             </div>
 
             <div class="declaration">
@@ -593,7 +760,7 @@ const EmployeesTab = ({
   };
 
   const downloadESICForm = (employee: Employee) => {
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open("", "_blank");
     if (!printWindow) {
       toast.error("Please allow popups to generate forms");
       return;
@@ -630,7 +797,7 @@ const EmployeesTab = ({
               <div class="field"><span class="label">Name:</span> ${employee.name}</div>
               <div class="field"><span class="label">ESIC Number:</span> ${employee.esicNumber}</div>
               <div class="field"><span class="label">Employee ID:</span> ${employee.employeeId}</div>
-              <div class="field"><span class="label">Date of Birth:</span> ${employee.dateOfBirth || '________________'}</div>
+              <div class="field"><span class="label">Date of Birth:</span> ${employee.dateOfBirth || "________________"}</div>
               <div class="field"><span class="label">Gender:</span> ________________</div>
               <div class="field"><span class="label">Marital Status:</span> ________________</div>
             </div>
@@ -647,20 +814,20 @@ const EmployeesTab = ({
                   </tr>
                 </thead>
                 <tbody>
-                  ${employee.fatherName ? `<tr><td>${employee.fatherName}</td><td>Father</td><td>________________</td><td>________________</td></tr>` : ''}
-                  ${employee.motherName ? `<tr><td>${employee.motherName}</td><td>Mother</td><td>________________</td><td>________________</td></tr>` : ''}
-                  ${employee.spouseName ? `<tr><td>${employee.spouseName}</td><td>Spouse</td><td>________________</td><td>________________</td></tr>` : ''}
+                  ${employee.fatherName ? `<tr><td>${employee.fatherName}</td><td>Father</td><td>________________</td><td>________________</td></tr>` : ""}
+                  ${employee.motherName ? `<tr><td>${employee.motherName}</td><td>Mother</td><td>________________</td><td>________________</td></tr>` : ""}
+                  ${employee.spouseName ? `<tr><td>${employee.spouseName}</td><td>Spouse</td><td>________________</td><td>________________</td></tr>` : ""}
                   ${employee.numberOfChildren ? Array(parseInt(employee.numberOfChildren) || 0).fill(0).map((_, i) => 
                     `<tr><td>________________</td><td>Child ${i + 1}</td><td>________________</td><td>________________</td></tr>`
-                  ).join('') : ''}
+                  ).join("") : ""}
                 </tbody>
               </table>
             </div>
 
             <div class="section">
               <div class="section-title">Nominee for Dependants Benefit</div>
-              <div class="field"><span class="label">Nominee Name:</span> ${employee.nomineeName || '________________'}</div>
-              <div class="field"><span class="label">Relationship:</span> ${employee.nomineeRelation || '________________'}</div>
+              <div class="field"><span class="label">Nominee Name:</span> ${employee.nomineeName || "________________"}</div>
+              <div class="field"><span class="label">Relationship:</span> ${employee.nomineeRelation || "________________"}</div>
               <div class="field"><span class="label">Address:</span> ________________</div>
             </div>
 
@@ -692,7 +859,7 @@ const EmployeesTab = ({
   };
 
   const downloadEPFForm11 = (employee: Employee) => {
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open("", "_blank");
     if (!printWindow) {
       toast.error("Please allow popups to generate forms");
       return;
@@ -851,19 +1018,19 @@ const EmployeesTab = ({
               </div>
               <div class="checkbox-group">
                 <div class="checkbox-item">
-                  <input type="checkbox" ${epfFormData.epfMemberBefore2014 === 'Yes' ? 'checked' : ''} disabled>
+                  <input type="checkbox" ${epfFormData.epfMemberBefore2014 === "Yes" ? "checked" : ""} disabled>
                   <label>Are you EPF Member before 01/09/2014</label>
                 </div>
                 <div class="checkbox-item">
-                  <input type="checkbox" ${epfFormData.epfAmountWithdrawn === 'Yes' ? 'checked' : ''} disabled>
+                  <input type="checkbox" ${epfFormData.epfAmountWithdrawn === "Yes" ? "checked" : ""} disabled>
                   <label>If Yes, EPF Amount Withdrawn?</label>
                 </div>
                 <div class="checkbox-item">
-                  <input type="checkbox" ${epfFormData.epsAmountWithdrawn === 'Yes' ? 'checked' : ''} disabled>
+                  <input type="checkbox" ${epfFormData.epsAmountWithdrawn === "Yes" ? "checked" : ""} disabled>
                   <label>If Yes, EPS (Pension) Amount Withdrawn?</label>
                 </div>
                 <div class="checkbox-item">
-                  <input type="checkbox" ${epfFormData.earnedEPSWithdrawn === 'Yes' ? 'checked' : ''} disabled>
+                  <input type="checkbox" ${epfFormData.earnedEPSWithdrawn === "Yes" ? "checked" : ""} disabled>
                   <label>After Sep 2014 earned EPS (Pension) Amount Withdrawn before Join current Employer?</label>
                 </div>
               </div>
@@ -910,16 +1077,16 @@ const EmployeesTab = ({
               
               <div class="field">
                 <div class="label">KYC Status:</div>
-                <div class="value">${epfFormData.kycStatus === 'not_uploaded' ? 'Have not been uploaded' : epfFormData.kycStatus === 'uploaded_not_approved' ? 'Have been uploaded but not approved' : 'Have been uploaded and approved with DSC'}</div>
+                <div class="value">${epfFormData.kycStatus === "not_uploaded" ? "Have not been uploaded" : epfFormData.kycStatus === "uploaded_not_approved" ? "Have been uploaded but not approved" : "Have been uploaded and approved with DSC"}</div>
               </div>
               
               <div class="checkbox-group">
                 <div class="checkbox-item">
-                  <input type="checkbox" ${epfFormData.transferRequestGenerated ? 'checked' : ''} disabled>
+                  <input type="checkbox" ${epfFormData.transferRequestGenerated ? "checked" : ""} disabled>
                   <label>Transfer request has been generated on portal</label>
                 </div>
                 <div class="checkbox-item">
-                  <input type="checkbox" ${epfFormData.physicalClaimFiled ? 'checked' : ''} disabled>
+                  <input type="checkbox" ${epfFormData.physicalClaimFiled ? "checked" : ""} disabled>
                   <label>Member has been informed to file physical claim (Form-13)</label>
                 </div>
               </div>
@@ -953,6 +1120,35 @@ const EmployeesTab = ({
 
   return (
     <div className="space-y-6">
+      {/* Loading overlay */}
+      {loading && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-center">Loading employees...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Error message */}
+      {error && !loading && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
+            <span className="text-red-700 font-medium">{error}</span>
+          </div>
+          <button
+            onClick={() => {
+              setError(null);
+              fetchEmployees();
+            }}
+            className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="relative w-full sm:w-64">
           <SearchBar
@@ -980,13 +1176,27 @@ const EmployeesTab = ({
               variant="outline" 
               onClick={() => setImportDialogOpen(true)}
               className="flex-1 sm:flex-none"
+              disabled={isImporting}
             >
-              <Sheet className="mr-2 h-4 w-4" />
-              Import Excel
+              {isImporting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Sheet className="mr-2 h-4 w-4" />
+              )}
+              {isImporting ? "Importing..." : "Import Excel"}
             </Button>
-            <Button variant="outline" onClick={handleExportEmployees} className="flex-1 sm:flex-none">
-              <Download className="mr-2 h-4 w-4" />
-              Export Excel
+            <Button 
+              variant="outline" 
+              onClick={handleExportEmployees} 
+              className="flex-1 sm:flex-none"
+              disabled={isExporting}
+            >
+              {isExporting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              {isExporting ? "Exporting..." : "Export Excel"}
             </Button>
             <Button onClick={() => setActiveTab("onboarding")} className="flex-1 sm:flex-none">
               <Plus className="mr-2 h-4 w-4" />
@@ -1042,6 +1252,7 @@ const EmployeesTab = ({
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
         onImport={handleImportEmployees}
+        loading={isImporting}
       />
 
       {/* EPF Form 11 Dialog */}
@@ -1589,7 +1800,8 @@ const EmployeesTab = ({
                   <Download className="mr-2 h-4 w-4" />
                   Download Form
                 </Button>
-                <Button onClick={handleEPFFormSubmit}>
+                <Button onClick={handleEPFFormSubmit} disabled={loading}>
+                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Submit Form
                 </Button>
               </div>
@@ -1959,17 +2171,24 @@ const EmployeesTab = ({
                       size="sm"
                       variant="destructive"
                       onClick={() => handleDeleteEmployee(employee.id)}
+                      disabled={isDeleting === employee.id}
                     >
-                      <Trash2 className="h-3 w-3" />
+                      {isDeleting === employee.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3 w-3" />
+                      )}
                     </Button>
                   </div>
                 </div>
               </div>
             ))}
             
-            {sortedEmployees.length === 0 && (
+            {sortedEmployees.length === 0 && !loading && (
               <div className="text-center py-8 text-muted-foreground">
-                No employees found. {searchTerm || selectedDepartment !== "all" || selectedSite !== "all" || selectedJoinDate ? "Try clearing filters." : "Add your first employee above."}
+                {searchTerm || selectedDepartment !== "all" || selectedSite !== "all" || selectedJoinDate ? 
+                  "No employees found matching your filters. Try clearing filters." : 
+                  "No employees found. Add your first employee above."}
               </div>
             )}
 
